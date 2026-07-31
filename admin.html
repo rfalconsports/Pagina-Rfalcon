@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es-CO">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RFALCON | Administrar Galería</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --bg:#FFFFFF; --bg-alt:#F3F7FA; --surface:#FFFFFF; --surface-2:#EAF1F5;
+    --line:#D7E3EA; --green:#20C100; --green-dim:#178B00;
+    --ink:#00385C; --ink-soft:#35597A; --ink-faint:#6E8CA3;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased;}
+  .f-display{font-family:'Anton',sans-serif;}
+  .f-label{font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:.1em;}
+  .btn-primary{background:var(--green); color:#00385C; font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:.06em;}
+  .btn-primary:hover{background:var(--green-dim); color:#fff;}
+  .btn-primary:disabled{opacity:.5; cursor:not-allowed;}
+  .card{background:var(--surface); border:1px solid var(--line); box-shadow:0 4px 24px -8px rgba(0,56,92,.12);}
+  input{background:#fff; border:1px solid var(--line); color:var(--ink);}
+  input:focus{outline:none; border-color:var(--green); box-shadow:0 0 0 3px rgba(32,193,0,.15);}
+  .upload-zone{border:2px dashed var(--line);}
+  .upload-zone.dragover{border-color:var(--green); background:rgba(32,193,0,.05);}
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="max-w-2xl mx-auto px-5 py-10">
+  <div class="flex items-center gap-3 mb-8">
+    <span class="f-display text-2xl">R<span style="color:var(--green)">FALCON</span></span>
+    <span class="f-label text-xs text-[--ink-faint]">· Admin Galería</span>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="login-view" class="card rounded-2xl p-6 md:p-8">
+    <h1 class="f-display text-2xl mb-1">Iniciar sesión</h1>
+    <p class="f-body text-sm text-[--ink-faint] mb-6">Usa el correo y contraseña que creaste en Supabase.</p>
+    <form id="login-form" class="space-y-4">
+      <div>
+        <label class="f-label text-[11px] text-[--ink-faint] block mb-1">Correo</label>
+        <input required type="email" id="login-email" class="w-full rounded-lg px-4 py-3 text-sm" placeholder="tucorreo@ejemplo.com">
+      </div>
+      <div>
+        <label class="f-label text-[11px] text-[--ink-faint] block mb-1">Contraseña</label>
+        <input required type="password" id="login-password" class="w-full rounded-lg px-4 py-3 text-sm" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn-primary w-full rounded-full py-3 text-sm font-semibold">Entrar</button>
+      <p id="login-error" class="f-body text-xs text-red-600 hidden"></p>
+    </form>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div id="admin-view" class="hidden">
+    <div class="flex items-center justify-between mb-6">
+      <p class="f-body text-sm text-[--ink-soft]">Sesión iniciada como <span id="admin-email" class="font-semibold text-[--ink]"></span></p>
+      <button id="logout-btn" class="f-label text-xs text-[--ink-faint] hover:text-[--ink] underline">Cerrar sesión</button>
+    </div>
+
+    <div class="card rounded-2xl p-6 md:p-8 mb-6">
+      <h2 class="f-display text-xl mb-4">Subir fotos</h2>
+      <label id="upload-zone" class="upload-zone rounded-xl flex flex-col items-center justify-center gap-2 py-10 px-4 cursor-pointer block text-center">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+        <span class="f-body text-sm text-[--ink-soft]">Toca aquí para elegir fotos de tu celular</span>
+        <span class="f-body text-xs text-[--ink-faint]">(cámara o galería) — puedes elegir varias a la vez</span>
+        <input id="file-input" type="file" accept="image/*" capture="environment" multiple class="hidden">
+      </label>
+      <div id="upload-progress" class="mt-4 space-y-2 hidden"></div>
+    </div>
+
+    <div class="card rounded-2xl p-6 md:p-8">
+      <h2 class="f-display text-xl mb-4">Fotos en la galería</h2>
+      <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <p class="f-body text-sm text-[--ink-faint] col-span-full">Cargando...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Mismo proyecto de Supabase que usa la landing page
+  const SUPABASE_URL = 'https://cvvjimfgkcfeukshavha.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2dmppbWZna2NmZXVrc2hhdmhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzODE2OTksImV4cCI6MjA5OTk1NzY5OX0.BRzgwX6F_2aH_m3nwwP5MKDjSmKFd7MnaxVvHVnU6Lc';
+  const BUCKET = 'galeria';
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const loginView = document.getElementById('login-view');
+  const adminView = document.getElementById('admin-view');
+  const loginForm = document.getElementById('login-form');
+  const loginError = document.getElementById('login-error');
+  const adminEmail = document.getElementById('admin-email');
+  const galleryGrid = document.getElementById('gallery-grid');
+  const fileInput = document.getElementById('file-input');
+  const uploadProgress = document.getElementById('upload-progress');
+
+  async function checkSession() {
+    const { data } = await sb.auth.getSession();
+    if (data.session) {
+      showAdmin(data.session.user.email);
+    } else {
+      loginView.classList.remove('hidden');
+      adminView.classList.add('hidden');
+    }
+  }
+
+  function showAdmin(email) {
+    loginView.classList.add('hidden');
+    adminView.classList.remove('hidden');
+    adminEmail.textContent = email;
+    loadGallery();
+  }
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loginError.classList.add('hidden');
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      loginError.textContent = 'Correo o contraseña incorrectos.';
+      loginError.classList.remove('hidden');
+      return;
+    }
+    showAdmin(data.user.email);
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    await sb.auth.signOut();
+    location.reload();
+  });
+
+  fileInput.addEventListener('change', async () => {
+    const files = Array.from(fileInput.files);
+    if (!files.length) return;
+    uploadProgress.classList.remove('hidden');
+    uploadProgress.innerHTML = '';
+    for (const file of files) {
+      const row = document.createElement('p');
+      row.className = 'f-body text-xs text-[--ink-faint]';
+      row.textContent = `Subiendo ${file.name}...`;
+      uploadProgress.appendChild(row);
+
+      const path = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const { error } = await sb.storage.from(BUCKET).upload(path, file, { upsert: false });
+      row.textContent = error ? `Error subiendo ${file.name}: ${error.message}` : `${file.name} subida ✓`;
+      row.style.color = error ? '#dc2626' : 'var(--green-dim)';
+    }
+    fileInput.value = '';
+    loadGallery();
+  });
+
+  async function loadGallery() {
+    galleryGrid.innerHTML = '<p class="f-body text-sm text-[--ink-faint] col-span-full">Cargando...</p>';
+    const { data, error } = await sb.storage.from(BUCKET).list('', { sortBy: { column: 'created_at', order: 'desc' } });
+    if (error || !data || !data.length) {
+      galleryGrid.innerHTML = '<p class="f-body text-sm text-[--ink-faint] col-span-full">Aún no hay fotos.</p>';
+      return;
+    }
+    galleryGrid.innerHTML = '';
+    data.forEach(file => {
+      const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(file.name);
+      const wrap = document.createElement('div');
+      wrap.className = 'relative rounded-lg overflow-hidden aspect-square group';
+      wrap.innerHTML = `
+        <img src="${pub.publicUrl}" class="w-full h-full object-cover" alt="">
+        <button data-name="${file.name}" class="delete-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+      `;
+      galleryGrid.appendChild(wrap);
+    });
+    galleryGrid.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('¿Borrar esta foto?')) return;
+        await sb.storage.from(BUCKET).remove([btn.dataset.name]);
+        loadGallery();
+      });
+    });
+  }
+
+  checkSession();
+</script>
+
+</body>
+</html>
